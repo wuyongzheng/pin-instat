@@ -6,10 +6,15 @@
 
 struct insrecord {
 	string opcode;
+	REG reg;
 	int count;
+	ADDRINT low;
+	ADDRINT high;
 };
 
 const char *imgname = "ld-linux.so.2";
+const char *logname = "instat.log";
+FILE *log;
 ADDRINT imglow = 0;
 ADDRINT imghigh = 0;
 bool imgloaded = false;
@@ -17,12 +22,12 @@ std::map<ADDRINT,insrecord> insmap;
 
 void img_load (IMG img, void *v)
 {
-	fprintf(stderr, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
+	fprintf(log, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
 			IMG_Name(img).c_str(),
 			IMG_LoadOffset(img), IMG_LowAddress(img), IMG_HighAddress(img),
 			IMG_StartAddress(img), IMG_SizeMapped(img));
 	if (IMG_Name(img).rfind(imgname) != std::string::npos) {
-		fprintf(stderr, "matched\n");
+		fprintf(log, "matched\n");
 		imglow = IMG_LowAddress(img);
 		imghigh = IMG_HighAddress(img);
 		imgloaded = true;
@@ -32,50 +37,70 @@ void img_load (IMG img, void *v)
 void img_unload (IMG img, void *v)
 {
 	if (IMG_Name(img).rfind(imgname) != std::string::npos) {
-		fprintf(stderr, "unload matched\n");
+		fprintf(log, "unload matched\n");
 		imgloaded = false;
 	}
 }
 
-void on_ins (ADDRINT insaddr)
+void on_ins (ADDRINT insaddr, ADDRINT regval)
 {
+	if (insmap[insaddr].count == 0) {
+		insmap[insaddr].low = insmap[insaddr].high = regval;
+	} else {
+		insmap[insaddr].low = min(insmap[insaddr].low, insaddr);
+		insmap[insaddr].high = max(insmap[insaddr].high, insaddr);
+	}
 	insmap[insaddr].count ++;
 }
 
 void instruction (INS ins, void *v)
 {
 	ADDRINT addr = INS_Address(ins);
-	//fprintf(stderr, "%x\n", addr);
+	//fprintf(log, "%x\n", addr);
 
 	if (imgloaded && addr >= imglow && addr <= imghigh) {
-		//fprintf(stderr, "%x\n", addr);
+		//fprintf(log, "%x\n", addr);
 		if (insmap.find(addr) == insmap.end()) {
 			struct insrecord record;
-			record.opcode = INS_Mnemonic(ins);
+			record.opcode = INS_Disassemble(ins);
 			record.count = 0;
+
+			UINT32 regindex = 0;
+			while (regindex < INS_OperandCount(ins)) {
+				if (INS_OperandRead(ins, regindex) && INS_OperandIsReg(ins, regindex))
+					break;
+				regindex ++;
+			}
+			if (regindex < INS_OperandCount(ins)) {
+				record.reg = INS_OperandReg(ins, regindex);
+				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR, IARG_REG_VALUE, record.reg, IARG_END);
+			} else {
+				record.reg = REG_INVALID();
+				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR, IARG_ADDRINT, 0, IARG_END);
+			}
+
 			//insmap.insert(addr, record);
 			insmap[addr] = record;
-			INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
-					IARG_INST_PTR, IARG_END);
-			//fprintf(stderr, "KKK %x\n", addr);
 		}
 	}
 }
 
 void on_fini (INT32 code, void *v)
 {
-	fprintf(stderr, "fini\n");
+	fprintf(log, "fini %d\n", code);
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
-		printf("%x %s %d\n", ite->first, ite->second.opcode.c_str(), ite->second.count);
+		fprintf(log, "%x\t%s\t%d\t%s\t%x\t%x\n", ite->first, ite->second.opcode.c_str(), ite->second.count, REG_StringShort(ite->second.reg).c_str(), ite->second.low, ite->second.high);
 	}
 }
 
 int main (int argc, char *argv[])
 {
 	if(PIN_Init(argc, argv)) {
-		printf("command line error\n");
+		fprintf(stderr, "command line error\n");
 		return 1;
 	}
+
+	log = fopen(logname, "w");
 
 	PIN_InitSymbols();
 
