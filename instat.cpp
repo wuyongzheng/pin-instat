@@ -4,6 +4,8 @@
 #include <pin.H>
 #include <map>
 
+#define MYREG_INVALID   ((REG)(REG_LAST + 1))
+#define MYREG_JMPTARGET ((REG)(REG_LAST + 2))
 struct insrecord {
 	string opcode;
 	REG reg;
@@ -14,6 +16,7 @@ struct insrecord {
 
 const char *imgname = "ld-linux.so.2";
 const char *logname = "instat.log";
+const char *tsvname = "instat.tsv";
 FILE *log;
 ADDRINT imglow = 0;
 ADDRINT imghigh = 0;
@@ -42,15 +45,15 @@ void img_unload (IMG img, void *v)
 	}
 }
 
-void on_ins (ADDRINT insaddr, ADDRINT regval)
+void on_ins (ADDRINT insaddr, struct insrecord *rec, ADDRINT regval)
 {
-	if (insmap[insaddr].count == 0) {
-		insmap[insaddr].low = insmap[insaddr].high = regval;
+	if (rec->count == 0) {
+		rec->low = rec->high = regval;
 	} else {
-		insmap[insaddr].low = min(insmap[insaddr].low, insaddr);
-		insmap[insaddr].high = max(insmap[insaddr].high, insaddr);
+		rec->low = min(rec->low, regval);
+		rec->high = max(rec->high, regval);
 	}
-	insmap[insaddr].count ++;
+	rec->count ++;
 }
 
 void instruction (INS ins, void *v)
@@ -64,23 +67,38 @@ void instruction (INS ins, void *v)
 			struct insrecord record;
 			record.opcode = INS_Disassemble(ins);
 			record.count = 0;
+			record.low = record.high = 0;
 
-			UINT32 regindex = 0;
-			while (regindex < INS_OperandCount(ins)) {
-				if (INS_OperandRead(ins, regindex) && INS_OperandIsReg(ins, regindex))
-					break;
-				regindex ++;
-			}
-			if (regindex < INS_OperandCount(ins)) {
-				record.reg = INS_OperandReg(ins, regindex);
-				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR, IARG_REG_VALUE, record.reg, IARG_END);
+			if (INS_IsBranchOrCall(ins)) {
+				record.reg = MYREG_JMPTARGET;
 			} else {
-				record.reg = REG_INVALID();
-				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR, IARG_ADDRINT, 0, IARG_END);
+				record.reg = MYREG_INVALID;
+				for (UINT32 regindex = 0; regindex < INS_OperandCount(ins); regindex ++) {
+					if (INS_OperandRead(ins, regindex) && INS_OperandIsReg(ins, regindex)) {
+						record.reg = INS_OperandReg(ins, regindex);
+						break;
+					}
+				}
+				if (record.reg == MYREG_INVALID && INS_MaxNumRRegs(ins) > 0)
+					record.reg = INS_RegR(ins, 0);
 			}
 
 			//insmap.insert(addr, record);
 			insmap[addr] = record;
+
+			if (record.reg == MYREG_JMPTARGET) {
+				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR,
+						IARG_ADDRINT, &insmap[addr], // we assume std::map doesn't move our data.
+						IARG_BRANCH_TARGET_ADDR,
+						IARG_END);
+			} else {
+				INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR,
+						IARG_ADDRINT, &insmap[addr], // we assume std::map doesn't move our data.
+						record.reg == MYREG_INVALID ? IARG_ADDRINT : IARG_REG_VALUE,
+						record.reg == MYREG_INVALID ? 0 : record.reg,
+						IARG_END);
+			}
+
 		}
 	}
 }
@@ -88,9 +106,18 @@ void instruction (INS ins, void *v)
 void on_fini (INT32 code, void *v)
 {
 	fprintf(log, "fini %d\n", code);
+	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
-		fprintf(log, "%x\t%s\t%d\t%s\t%x\t%x\n", ite->first, ite->second.opcode.c_str(), ite->second.count, REG_StringShort(ite->second.reg).c_str(), ite->second.low, ite->second.high);
+		const char *reg = ite->second.reg == MYREG_INVALID ? "-" :
+			(ite->second.reg == MYREG_JMPTARGET ? "jmp" :
+			 REG_StringShort(ite->second.reg).c_str());
+		fprintf(fp, "%x\t%s\t%d\t%s\t%x\t%x\n",
+				ite->first, ite->second.opcode.c_str(), ite->second.count,
+				reg,
+				ite->second.low, ite->second.high);
 	}
+	fclose(fp);
+	fclose(log);
 }
 
 int main (int argc, char *argv[])
