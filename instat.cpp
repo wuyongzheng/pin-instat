@@ -16,12 +16,12 @@ struct insrecord {
 
 const char *logname = "instat.log";
 const char *tsvname = "instat.tsv";
-FILE *log;
+FILE *logfp;
 std::map<ADDRINT,insrecord> insmap;
 
 void img_load (IMG img, void *v)
 {
-	fprintf(log, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
+	fprintf(logfp, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
 			IMG_Name(img).c_str(),
 			IMG_LoadOffset(img), IMG_LowAddress(img), IMG_HighAddress(img),
 			IMG_StartAddress(img), IMG_SizeMapped(img));
@@ -88,7 +88,7 @@ void instruction (INS ins, void *v)
 
 void on_fini (INT32 code, void *v)
 {
-	fprintf(log, "fini %d\n", code);
+	fprintf(logfp, "fini %d\n", code);
 	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
 		const char *reg = ite->second.reg == MYREG_INVALID ? "-" :
@@ -100,7 +100,7 @@ void on_fini (INT32 code, void *v)
 				ite->second.low, ite->second.high);
 	}
 	fclose(fp);
-	fclose(log);
+	fclose(logfp);
 }
 
 int main (int argc, char *argv[])
@@ -110,7 +110,7 @@ int main (int argc, char *argv[])
 		return 1;
 	}
 
-	log = fopen(logname, "w");
+	logfp = fopen(logname, "w");
 
 	//PIN_InitSymbols();
 
