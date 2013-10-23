@@ -91,12 +91,10 @@ void on_fini (INT32 code, void *v)
 	fprintf(logfp, "fini %d\n", code);
 	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
-		const char *reg = ite->second.reg == MYREG_INVALID ? "-" :
-			(ite->second.reg == MYREG_JMPTARGET ? "jmp" :
-			 REG_StringShort(ite->second.reg).c_str());
 		fprintf(fp, "%x\t%s\t%d\t%s\t%x\t%x\n",
 				ite->first, ite->second.opcode.c_str(), ite->second.count,
-				reg,
+				ite->second.reg == MYREG_INVALID ? "-" :
+				(ite->second.reg == MYREG_JMPTARGET ? "jmp" : REG_StringShort(ite->second.reg).c_str()),
 				ite->second.low, ite->second.high);
 	}
 	fclose(fp);
