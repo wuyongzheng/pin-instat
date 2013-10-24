@@ -39,7 +39,7 @@ void on_ins (ADDRINT insaddr, struct insrecord *rec, ADDRINT regval)
 }
 
 inline bool REG_is_integer (REG reg) {
-	return (reg > REG_RBASE && reg < REG_MM_BASE);
+	return (reg >= REG_RBASE && reg < REG_MM_BASE);
 }
 
 void instruction (INS ins, void *v)
