@@ -13,6 +13,7 @@ struct insrecord {
 	string opcode;
 	REG reg;
 	int count;
+	int branch_taken; // -1 for instruction other than conditional branch
 	ADDRINT low;
 	ADDRINT high;
 	bool iscall;
@@ -23,7 +24,7 @@ const char *tsvname = "instat.tsv";
 FILE *logfp;
 std::map<ADDRINT,insrecord> insmap;
 std::map<ADDRINT,string> symbols;
-std::map<ADDRINT,std::pair<ADDRINT,string>> imgs;
+std::map<ADDRINT,std::pair<ADDRINT,string> > imgs;
 std::set<ADDRINT> calltargets;
 
 void img_load (IMG img, void *v)
@@ -58,17 +59,18 @@ void img_load (IMG img, void *v)
 	}*/
 }
 
-void on_ins (ADDRINT insaddr, struct insrecord *rec, ADDRINT regval, BOOL isindcall)
+void on_branch_taken (struct insrecord *rec)
 {
-	if (rec->count == 0) {
-		rec->low = rec->high = regval;
-	} else {
-		rec->low = min(rec->low, regval);
-		rec->high = max(rec->high, regval);
-	}
+	rec->branch_taken ++;
+}
+
+void on_ins (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
+{
+	rec->low = min(rec->low, regval);
+	rec->high = max(rec->high, regval);
+	rec->count ++;
 	if (isindcall)
 		calltargets.insert(regval);
-	rec->count ++;
 }
 
 inline bool REG_is_integer (REG reg) {
@@ -79,14 +81,15 @@ void instruction (INS ins, void *v)
 {
 	ADDRINT addr = INS_Address(ins);
 
-	//fprintf(log, "%x\n", addr);
 	if (insmap.find(addr) != insmap.end())
 		return;
 
 	struct insrecord record;
 	record.opcode = INS_Disassemble(ins);
 	record.count = 0;
-	record.low = record.high = 0;
+	record.branch_taken = -1;
+	record.low = -1;
+	record.high = 0;
 	record.iscall = INS_IsCall(ins);
 
 	if (INS_IsBranchOrCall(ins)) {
@@ -107,28 +110,33 @@ void instruction (INS ins, void *v)
 			record.reg = INS_RegR(ins, 0);
 	}
 
-	//insmap.insert(addr, record);
 	insmap[addr] = record;
 
 	if (record.reg == MYREG_JMPTARGET) {
-		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR,
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
 				IARG_ADDRINT, &insmap[addr], // we assume std::map doesn't move our data.
 				IARG_BRANCH_TARGET_ADDR,
 				IARG_BOOL, INS_IsCall(ins) && (!INS_IsDirectCall(ins)),
 				IARG_END);
 	} else {
-		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins), IARG_INST_PTR,
-				IARG_ADDRINT, &insmap[addr], // we assume std::map doesn't move our data.
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
+				IARG_ADDRINT, &insmap[addr],
 				record.reg == MYREG_INVALID ? IARG_ADDRINT : IARG_REG_VALUE,
 				record.reg == MYREG_INVALID ? 0 : record.reg,
 				IARG_BOOL, false,
+				IARG_END);
+	}
+	if (INS_IsBranch(ins) && INS_HasFallThrough(ins)) {
+		insmap[addr].branch_taken = 0;
+		INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, AFUNPTR(on_branch_taken),
+				IARG_ADDRINT, &insmap[addr],
 				IARG_END);
 	}
 }
 
 string get_rtn_name (ADDRINT addr)
 {
-	std::map<ADDRINT,std::pair<ADDRINT,string>>::iterator it = imgs.upper_bound(addr);
+	std::map<ADDRINT,std::pair<ADDRINT,string> >::iterator it = imgs.upper_bound(addr);
 	std::stringstream ss;
 	if (it->first == 0 || addr < it->second.first)
 		ss << "unknown.";
@@ -150,6 +158,7 @@ void on_fini (INT32 code, void *v)
 				ite->first, ite->second.opcode.c_str(), ite->second.count,
 				ite->second.reg == MYREG_INVALID ? "-" :
 				(ite->second.reg == MYREG_JMPTARGET ? "->" : REG_StringShort(ite->second.reg).c_str()));
+
 		if (ite->second.count == 0 || ite->second.reg == MYREG_INVALID)
 			fprintf(fp, "\t-\t-");
 		else
@@ -157,6 +166,10 @@ void on_fini (INT32 code, void *v)
 
 		if (calltargets.find(ite->first) != calltargets.end())
 			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first).c_str());
+
+		if (ite->second.branch_taken != -1) {
+			fprintf(fp, "\tbrtaken: %d", ite->second.branch_taken);
+		}
 
 		if (ite->second.reg == MYREG_JMPTARGET && ite->second.iscall &&
 				(ite->second.count != 0 || ite->second.low != 0)) {
