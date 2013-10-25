@@ -138,7 +138,7 @@ string get_rtn_name (ADDRINT addr)
 {
 	std::map<ADDRINT,std::pair<ADDRINT,string> >::iterator it = imgs.upper_bound(addr);
 	std::stringstream ss;
-	if (it->first == 0 || addr < it->second.first)
+	if (it == imgs.end() || it->first == 0 || addr < it->second.first)
 		ss << "unknown.";
 	else
 		ss << it->second.second << ".";
@@ -172,7 +172,7 @@ void on_fini (INT32 code, void *v)
 		}
 
 		if (ite->second.reg == MYREG_JMPTARGET && ite->second.iscall &&
-				(ite->second.count != 0 || ite->second.low != 0)) {
+				(ite->second.count != 0 || ite->second.high != 0)) {
 			if (ite->second.low == ite->second.high) {
 				fprintf(fp, "\ttarget: %s", get_rtn_name(ite->second.low).c_str());
 			} else {
