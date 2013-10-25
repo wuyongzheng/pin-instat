@@ -134,18 +134,19 @@ void instruction (INS ins, void *v)
 	}
 }
 
-string get_rtn_name (ADDRINT addr)
+string get_rtn_name (ADDRINT addr, bool full)
 {
 	std::map<ADDRINT,std::pair<ADDRINT,string> >::iterator it = imgs.upper_bound(addr);
 	std::stringstream ss;
 	if (it->first == 0 || addr < it->second.first)
-		ss << "unknown.";
+		ss << "[?].";
 	else
-		ss << it->second.second << ".";
+		ss << "[" << it->second.second << "].";
+
 	if (symbols.find(addr) == symbols.end())
 		ss << std::hex << addr;
 	else
-		ss << symbols[addr];
+		ss << PIN_UndecorateSymbolName(symbols[addr], full ? UNDECORATION_COMPLETE : UNDECORATION_NAME_ONLY);
 	return ss.str();
 }
 
@@ -165,7 +166,7 @@ void on_fini (INT32 code, void *v)
 			fprintf(fp, "\t%x\t%x", ite->second.low, ite->second.high);
 
 		if (calltargets.find(ite->first) != calltargets.end())
-			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first).c_str());
+			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first, true).c_str());
 
 		if (ite->second.branch_taken != -1) {
 			fprintf(fp, "\tbrtaken: %d", ite->second.branch_taken);
@@ -174,11 +175,11 @@ void on_fini (INT32 code, void *v)
 		if (ite->second.reg == MYREG_JMPTARGET && ite->second.iscall &&
 				(ite->second.count != 0 || ite->second.low != 0)) {
 			if (ite->second.low == ite->second.high) {
-				fprintf(fp, "\ttarget: %s", get_rtn_name(ite->second.low).c_str());
+				fprintf(fp, "\ttarget: %s", get_rtn_name(ite->second.low, false).c_str());
 			} else {
 				fprintf(fp, "\ttarget: %s - %s",
-						get_rtn_name(ite->second.low).c_str(),
-						get_rtn_name(ite->second.high).c_str());
+						get_rtn_name(ite->second.low, false).c_str(),
+						get_rtn_name(ite->second.high, false).c_str());
 			}
 		}
 		fprintf(fp, "\n");
