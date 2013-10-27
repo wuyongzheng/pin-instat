@@ -1,10 +1,7 @@
 #include <stdio.h>
-#include <string.h>
-#include <assert.h>
 #include <pin.H>
 #include <map>
-#include <set>
-#include <utility>
+#include <unordered_set>
 #include <sstream>
 
 #define MYREG_INVALID   ((REG)(REG_LAST + 1))
@@ -26,7 +23,7 @@ FILE *logfp;
 std::map<ADDRINT,insrecord> insmap;
 std::map<ADDRINT,string> symbols;
 std::map<ADDRINT,std::pair<ADDRINT,string> > imgs;
-std::set<ADDRINT> calltargets;
+std::unordered_set<ADDRINT> calltargets;
 bool ins_conflict_detected = false;
 
 static void img_load (IMG img, void *v)
