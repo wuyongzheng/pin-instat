@@ -29,7 +29,7 @@ std::map<ADDRINT,std::pair<ADDRINT,string> > imgs;
 std::set<ADDRINT> calltargets;
 bool ins_conflict_detected = false;
 
-void img_load (IMG img, void *v)
+static void img_load (IMG img, void *v)
 {
 	fprintf(logfp, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
 			IMG_Name(img).c_str(),
@@ -54,12 +54,20 @@ void img_load (IMG img, void *v)
 	}
 }
 
-void on_branch_taken (struct insrecord *rec)
+static void img_unload (IMG img, void *v)
+{
+	fprintf(logfp, "unload %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
+			IMG_Name(img).c_str(),
+			IMG_LoadOffset(img), IMG_LowAddress(img), IMG_HighAddress(img),
+			IMG_StartAddress(img), IMG_SizeMapped(img));
+}
+
+static void on_branch_taken (struct insrecord *rec)
 {
 	rec->branch_taken ++;
 }
 
-void on_ins (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
+static void on_ins (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
 {
 	rec->low = min(rec->low, regval);
 	rec->high = max(rec->high, regval);
@@ -68,11 +76,11 @@ void on_ins (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
 		calltargets.insert(regval);
 }
 
-inline bool REG_is_integer (REG reg) {
+static inline bool REG_is_integer (REG reg) {
 	return (reg >= REG_RBASE && reg < REG_MM_BASE);
 }
 
-void instruction (INS ins, void *v)
+static void instruction (INS ins, void *v)
 {
 	ADDRINT addr = INS_Address(ins);
 
@@ -142,7 +150,7 @@ void instruction (INS ins, void *v)
 	}
 }
 
-string get_rtn_name (ADDRINT addr, bool full)
+static string get_rtn_name (ADDRINT addr, bool full)
 {
 	std::map<ADDRINT,std::pair<ADDRINT,string> >::iterator it = imgs.upper_bound(addr);
 	std::stringstream ss;
@@ -158,7 +166,7 @@ string get_rtn_name (ADDRINT addr, bool full)
 	return ss.str();
 }
 
-void on_fini (INT32 code, void *v)
+static void on_fini (INT32 code, void *v)
 {
 	fprintf(logfp, "fini %d\n", code);
 	FILE *fp = fopen(tsvname, "w");
@@ -209,9 +217,9 @@ int main (int argc, char *argv[])
 
 	PIN_AddFiniFunction(on_fini, 0);
 	IMG_AddInstrumentFunction(img_load, NULL);
+	IMG_AddUnloadFunction(img_unload, NULL);
 	INS_AddInstrumentFunction(instruction, NULL);
 
-	imgs[0] = std::pair<ADDRINT,string>(1, "dummy");
 	PIN_StartProgram(); // Never returns
 	return 0;
 }
