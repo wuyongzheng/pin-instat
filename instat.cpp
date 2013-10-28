@@ -4,6 +4,14 @@
 #include <unordered_set>
 #include <sstream>
 
+#if defined(__GNUC__)
+# define PxPTR "%lx"
+#elif defined(_MSC_VER)
+# define PxPTR "%Ix"
+#else
+# error "unknown compiler"
+#endif
+
 #define MYREG_INVALID   ((REG)(REG_LAST + 1))
 #define MYREG_JMPTARGET ((REG)(REG_LAST + 2))
 #define MYREG_MEMORY    ((REG)(REG_LAST + 3))
@@ -29,7 +37,7 @@ bool ins_conflict_detected = false;
 
 static void img_load (IMG img, void *v)
 {
-	fprintf(logfp, "load %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
+	fprintf(logfp, "load %s off=" PxPTR " low=" PxPTR " high=" PxPTR " start=" PxPTR " size=%x\n",
 			IMG_Name(img).c_str(),
 			IMG_LoadOffset(img), IMG_LowAddress(img), IMG_HighAddress(img),
 			IMG_StartAddress(img), IMG_SizeMapped(img));
@@ -45,7 +53,7 @@ static void img_load (IMG img, void *v)
 
 	for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
 		for(RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
-			fprintf(logfp, "%08x %s\n", RTN_Address(rtn), RTN_Name(rtn).c_str());
+			fprintf(logfp, PxPTR " %s\n", RTN_Address(rtn), RTN_Name(rtn).c_str());
 			symbols[RTN_Address(rtn)] = RTN_Name(rtn);
 			calltargets.insert(RTN_Address(rtn));
 		}
@@ -54,7 +62,7 @@ static void img_load (IMG img, void *v)
 
 static void img_unload (IMG img, void *v)
 {
-	fprintf(logfp, "unload %s off=%08x low=%08x high=%08x start=%08x size=%08x\n",
+	fprintf(logfp, "unload %s off=" PxPTR " low=" PxPTR " high=" PxPTR " start=" PxPTR " size=%x\n",
 			IMG_Name(img).c_str(),
 			IMG_LoadOffset(img), IMG_LowAddress(img), IMG_HighAddress(img),
 			IMG_StartAddress(img), IMG_SizeMapped(img));
@@ -205,7 +213,7 @@ static void on_fini (INT32 code, void *v)
 	fprintf(logfp, "fini %d\n", code);
 	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
-		fprintf(fp, "%x\t%s\t%d\t%s",
+		fprintf(fp, PxPTR "\t%s\t%d\t%s",
 				ite->first, ite->second.opcode.c_str(), ite->second.count,
 				ite->second.reg == MYREG_INVALID ? "-" :
 				(ite->second.reg == MYREG_JMPTARGET ? "->" : (ite->second.reg == MYREG_MEMORY ?
@@ -214,7 +222,7 @@ static void on_fini (INT32 code, void *v)
 		if (ite->second.count == 0 || ite->second.reg == MYREG_INVALID)
 			fprintf(fp, "\t-\t-");
 		else
-			fprintf(fp, "\t%x\t%x", ite->second.low, ite->second.high);
+			fprintf(fp, "\t" PxPTR "\t" PxPTR, ite->second.low, ite->second.high);
 
 		if (calltargets.find(ite->first) != calltargets.end())
 			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first, true).c_str());

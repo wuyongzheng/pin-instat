@@ -1,0 +1,24 @@
+# Tested on pin-2.13-61206-msvc10-windows with visual studio express 2010.
+# How do I know the compiler configs? Open the solution file in MyPinTool, build it and read the build log.
+
+PIN_HOME = C:\pin-2.13
+
+CFLAGS = /c
+CFLAGS = $(CFLAGS) /I$(PIN_HOME)\source\include\pin /I$(PIN_HOME)\source\include\pin\gen /I$(PIN_HOME)\source\tools\InstLib /I$(PIN_HOME)\extras\xed2-ia32\include /I$(PIN_HOME)\extras\components\include
+CFLAGS = $(CFLAGS) /nologo /W3 /WX- /O2 /Oi /Oy-
+CFLAGS = $(CFLAGS) /D TARGET_IA32 /D HOST_IA32 /D TARGET_WINDOWS /D BIGARRAY_MULTIPLIER=1 /D USING_XED /D _CRT_SECURE_NO_DEPRECATE /D _SECURE_SCL=0 /D WIN32
+CFLAGS = $(CFLAGS) /Gm- /MT /GS- /Gy /fp:precise /Zc:wchar_t /Zc:forScope /GR-
+CFLAGS = $(CFLAGS) /Gd /TP /wd4530 /analyze- /errorReport:prompt /EHs- /EHa-
+
+LDFLAGS = /ERRORREPORT:PROMPT /INCREMENTAL:NO /NOLOGO
+LDFLAGS = $(LDFLAGS) /LIBPATH:$(PIN_HOME)\ia32\lib /LIBPATH:$(PIN_HOME)\ia32\lib-ext /LIBPATH:$(PIN_HOME)\extras\xed2-ia32\lib
+LDFLAGS = $(LDFLAGS) /NODEFAULTLIB /MANIFEST:NO /DEBUG /OPT:REF /TLBID:1 /ENTRY:"Ptrace_DllMainCRTStartup@12" /BASE:"0x55000000"
+LDFLAGS = $(LDFLAGS) /DYNAMICBASE /NXCOMPAT /MACHINE:X86 /DLL /export:main 
+
+LIBS = pin.lib libxed.lib libcpmt.lib libcmt.lib pinvm.lib kernel32.lib ntdll-32.lib
+
+instat.dll: instat.obj
+        link $(LDFLAGS) /OUT:instat.dll instat.obj $(LIBS)
+
+instat.obj: instat.cpp
+        cl $(CFLAGS) instat.cpp
