@@ -6,6 +6,7 @@
 
 #define MYREG_INVALID   ((REG)(REG_LAST + 1))
 #define MYREG_JMPTARGET ((REG)(REG_LAST + 2))
+#define MYREG_MEMORY    ((REG)(REG_LAST + 3))
 struct insrecord {
 	//ADDRINT addr;
 	string opcode;
@@ -64,13 +65,37 @@ static void on_branch_taken (struct insrecord *rec)
 	rec->branch_taken ++;
 }
 
-static void on_ins (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
+static void on_ins (struct insrecord *rec, ADDRINT regval)
+{
+	rec->low = min(rec->low, regval);
+	rec->high = max(rec->high, regval);
+	rec->count ++;
+}
+
+static void on_ins_indcall (struct insrecord *rec, ADDRINT regval, BOOL isindcall)
 {
 	rec->low = min(rec->low, regval);
 	rec->high = max(rec->high, regval);
 	rec->count ++;
 	if (isindcall)
 		calltargets.insert(regval);
+}
+
+static void on_ins_memory (struct insrecord *rec, ADDRINT addr, ADDRINT size, BOOL isindcall)
+{
+	ADDRINT val;
+	switch (size) {
+		case 1: val = *(UINT8 *)addr;
+		case 2: val = *(UINT16 *)addr;
+		case 4: val = *(UINT32 *)addr;
+		case 8: val = *(UINT64 *)addr;
+		default: val = *(ADDRINT *)addr;
+	}
+	rec->low = min(rec->low, val);
+	rec->high = max(rec->high, val);
+	rec->count ++;
+	if (isindcall)
+		calltargets.insert(val);
 }
 
 static inline bool REG_is_integer (REG reg) {
@@ -113,6 +138,8 @@ static void instruction (INS ins, void *v)
 				calltargets.insert(INS_DirectBranchOrCallTargetAddress(ins));
 				record.low = record.high = INS_DirectBranchOrCallTargetAddress(ins);
 			}
+		} else if (INS_IsMemoryRead(ins) && INS_MemoryReadSize(ins) < sizeof(void*)) {
+			record.reg = MYREG_MEMORY;
 		} else {
 			record.reg = MYREG_INVALID;
 			for (UINT32 regindex = 0; regindex < INS_OperandCount(ins); regindex ++) {
@@ -127,17 +154,27 @@ static void instruction (INS ins, void *v)
 	}
 
 	if (record.reg == MYREG_JMPTARGET) {
-		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins_indcall),
 				IARG_ADDRINT, &record, // we assume std::map doesn't move our data.
 				IARG_BRANCH_TARGET_ADDR,
 				IARG_BOOL, INS_IsCall(ins) && (!INS_IsDirectCall(ins)),
 				IARG_END);
+	} else if (record.reg == MYREG_MEMORY) {
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins_memory),
+				IARG_ADDRINT, &record,
+				IARG_MEMORYREAD_EA,
+				IARG_MEMORYREAD_SIZE,
+				IARG_BOOL, INS_IsCall(ins) && (!INS_IsDirectCall(ins)),
+				IARG_END);
+	} else if (record.reg == MYREG_INVALID) {
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
+				IARG_ADDRINT, &record,
+				IARG_ADDRINT, 0,
+				IARG_END);
 	} else {
 		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins),
 				IARG_ADDRINT, &record,
-				record.reg == MYREG_INVALID ? IARG_ADDRINT : IARG_REG_VALUE,
-				record.reg == MYREG_INVALID ? 0 : record.reg,
-				IARG_BOOL, false,
+				IARG_REG_VALUE, record.reg,
 				IARG_END);
 	}
 	if (INS_IsBranch(ins) && INS_HasFallThrough(ins)) {
@@ -171,7 +208,8 @@ static void on_fini (INT32 code, void *v)
 		fprintf(fp, "%x\t%s\t%d\t%s",
 				ite->first, ite->second.opcode.c_str(), ite->second.count,
 				ite->second.reg == MYREG_INVALID ? "-" :
-				(ite->second.reg == MYREG_JMPTARGET ? "->" : REG_StringShort(ite->second.reg).c_str()));
+				(ite->second.reg == MYREG_JMPTARGET ? "->" : (ite->second.reg == MYREG_MEMORY ?
+					"*" : REG_StringShort(ite->second.reg).c_str())));
 
 		if (ite->second.count == 0 || ite->second.reg == MYREG_INVALID)
 			fprintf(fp, "\t-\t-");
