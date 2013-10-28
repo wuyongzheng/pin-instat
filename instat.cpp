@@ -23,7 +23,6 @@ struct insrecord {
 	int branch_taken; // -1 for instruction other than conditional branch
 	ADDRINT low;
 	ADDRINT high;
-	bool iscall;
 };
 
 const char *logname = "instat.log";
@@ -138,7 +137,6 @@ static void instruction (INS ins, void *v)
 		record.branch_taken = INS_IsBranch(ins) && INS_HasFallThrough(ins) ? 0 : -1;
 		record.low = -1;
 		record.high = 0;
-		record.iscall = INS_IsCall(ins);
 
 		if (INS_IsBranchOrCall(ins)) {
 			record.reg = MYREG_JMPTARGET;
@@ -231,7 +229,8 @@ static void on_fini (INT32 code, void *v)
 			fprintf(fp, "\tbrtaken: %d", ite->second.branch_taken);
 		}
 
-		if (ite->second.reg == MYREG_JMPTARGET && ite->second.iscall &&
+		if (ite->second.reg == MYREG_JMPTARGET &&
+				ite->second.opcode.compare(0, 5, "call ") == 0 &&
 				(ite->second.count != 0 || ite->second.high != 0)) {
 			if (ite->second.low == ite->second.high) {
 				fprintf(fp, "\ttarget: %s", get_rtn_name(ite->second.low, false).c_str());
