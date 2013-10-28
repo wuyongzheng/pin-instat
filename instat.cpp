@@ -93,10 +93,10 @@ static void on_ins_memory (struct insrecord *rec, ADDRINT addr, ADDRINT size, BO
 {
 	ADDRINT val;
 	switch (size) {
-		case 1: val = *(UINT8 *)addr;
-		case 2: val = *(UINT16 *)addr;
-		case 4: val = *(UINT32 *)addr;
-		case 8: val = *(UINT64 *)addr;
+		case 1: val = *(UINT8 *)addr; break;
+		case 2: val = *(UINT16 *)addr; break;
+		case 4: val = *(UINT32 *)addr; break;
+		case 8: val = *(UINT64 *)addr; break;
 		default: val = *(ADDRINT *)addr;
 	}
 	rec->low = min(rec->low, val);
@@ -146,7 +146,7 @@ static void instruction (INS ins, void *v)
 				calltargets.insert(INS_DirectBranchOrCallTargetAddress(ins));
 				record.low = record.high = INS_DirectBranchOrCallTargetAddress(ins);
 			}
-		} else if (INS_IsMemoryRead(ins) && INS_MemoryReadSize(ins) < sizeof(void*)) {
+		} else if (INS_IsMemoryRead(ins) && INS_MemoryReadSize(ins) <= sizeof(void*)) {
 			record.reg = MYREG_MEMORY;
 		} else {
 			record.reg = MYREG_INVALID;
