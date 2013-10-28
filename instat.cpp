@@ -16,13 +16,12 @@
 #define MYREG_JMPTARGET ((REG)(REG_LAST + 2))
 #define MYREG_MEMORY    ((REG)(REG_LAST + 3))
 struct insrecord {
-	//ADDRINT addr;
 	string opcode;
+	ADDRINT low;
+	ADDRINT high;
 	REG reg;
 	int count;
 	int branch_taken; // -1 for instruction other than conditional branch
-	ADDRINT low;
-	ADDRINT high;
 };
 
 const char *logname = "instat.log";
@@ -95,7 +94,9 @@ static void on_ins_memory (struct insrecord *rec, ADDRINT addr, ADDRINT size, BO
 		case 1: val = *(UINT8 *)addr; break;
 		case 2: val = *(UINT16 *)addr; break;
 		case 4: val = *(UINT32 *)addr; break;
+#ifdef TARGET_IA32E
 		case 8: val = *(UINT64 *)addr; break;
+#endif
 		default: val = *(ADDRINT *)addr;
 	}
 	rec->low = min(rec->low, val);
