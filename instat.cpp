@@ -167,7 +167,7 @@ static void instruction (INS ins, void *v)
 				IARG_BOOL, INS_IsCall(ins) && (!INS_IsDirectCall(ins)),
 				IARG_END);
 	} else if (record.reg == MYREG_MEMORY) {
-		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins_memory),
+		INS_InsertPredicatedCall(ins, IPOINT_BEFORE, AFUNPTR(on_ins_memory),
 				IARG_ADDRINT, &record,
 				IARG_MEMORYREAD_EA,
 				IARG_MEMORYREAD_SIZE,
