@@ -22,8 +22,9 @@ struct insrecord {
 	ADDRINT low;
 	ADDRINT high;
 	REG reg;
-	int count;
+	int count = 0;
 	int branch_taken; // -1 for instruction other than conditional branch
+	bool iscallentry = false;
 };
 
 const char *logname = "instat.log";
@@ -32,7 +33,6 @@ FILE *logfp;
 std::map<ADDRINT,insrecord> insmap;
 std::map<ADDRINT,string> symbols;
 std::map<ADDRINT,std::pair<ADDRINT,string> > imgs;
-std::unordered_set<ADDRINT> calltargets;
 bool ins_conflict_detected = false;
 
 static void img_load (IMG img, void *v)
@@ -55,7 +55,7 @@ static void img_load (IMG img, void *v)
 		for(RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
 			fprintf(logfp, PxPTR " %s\n", RTN_Address(rtn), RTN_Name(rtn).c_str());
 			symbols[RTN_Address(rtn)] = RTN_Name(rtn);
-			calltargets.insert(RTN_Address(rtn));
+			insmap[RTN_Address(rtn)].iscallentry = true;
 		}
 	}
 }
@@ -86,7 +86,7 @@ static void on_ins_indcall (struct insrecord *rec, ADDRINT regval, BOOL isindcal
 	rec->high = max(rec->high, regval);
 	rec->count ++;
 	if (isindcall)
-		calltargets.insert(regval);
+		insmap[regval].iscallentry = true;
 }
 
 static void on_ins_memory (struct insrecord *rec, ADDRINT addr, ADDRINT size, BOOL isindcall)
@@ -105,7 +105,7 @@ static void on_ins_memory (struct insrecord *rec, ADDRINT addr, ADDRINT size, BO
 	rec->high = max(rec->high, val);
 	rec->count ++;
 	if (isindcall)
-		calltargets.insert(val);
+		insmap[val].iscallentry = true;
 }
 
 static inline bool REG_is_integer (REG reg) {
@@ -115,12 +115,12 @@ static inline bool REG_is_integer (REG reg) {
 static void instruction (INS ins, void *v)
 {
 	ADDRINT addr = INS_Address(ins);
+	struct insrecord &record = insmap[addr];
 
 	/* PIN may call us mutiple times on the same instruction.
 	 * We need to do INS_InsertCall everytime, but initiallize insrecord for the first time.
 	 * We can't handle the situation when different code are loaded into the same address at different time. */ 
-	bool firsttime = true;
-	if (insmap.find(addr) != insmap.end()) {
+	if (!record.opcode.empty()) {
 		if (INS_Disassemble(ins) != insmap[addr].opcode) {
 			if (!ins_conflict_detected) {
 				fprintf(logfp, "conflicting instruction at %p. old=\"%s\", new=\"%s\". Statistics is incomplete.\n",
@@ -129,14 +129,9 @@ static void instruction (INS ins, void *v)
 			}
 			return;
 		}
-		firsttime = false;
-	}
-	struct insrecord &record = insmap[addr];
-
-	if (firsttime) {
+	} else {
 		//record.addr = addr;
 		record.opcode = INS_Disassemble(ins);
-		record.count = 0;
 		record.branch_taken = INS_IsBranch(ins) && INS_HasFallThrough(ins) ? 0 : -1;
 		record.low = -1;
 		record.high = 0;
@@ -144,7 +139,7 @@ static void instruction (INS ins, void *v)
 		if (INS_IsBranchOrCall(ins)) {
 			record.reg = MYREG_JMPTARGET;
 			if (INS_IsDirectCall(ins)) {
-				calltargets.insert(INS_DirectBranchOrCallTargetAddress(ins));
+				insmap[INS_DirectBranchOrCallTargetAddress(ins)].iscallentry = true;
 				record.low = record.high = INS_DirectBranchOrCallTargetAddress(ins);
 			}
 		} else if (INS_IsMemoryRead(ins) && INS_MemoryReadSize(ins) <= sizeof(void*)) {
@@ -215,6 +210,8 @@ static void on_fini (INT32 code, void *v)
 	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
 		struct insrecord &rec = ite->second;
+		if (rec.opcode.empty())
+			continue;
 		fprintf(fp, PxPTR "\t%s\t%d\t%s",
 				ite->first, rec.opcode.c_str(), rec.count,
 				rec.reg == MYREG_INVALID ? "-" :
@@ -226,7 +223,7 @@ static void on_fini (INT32 code, void *v)
 		else
 			fprintf(fp, "\t" PxPTR "\t" PxPTR, rec.low, rec.high);
 
-		if (calltargets.find(ite->first) != calltargets.end())
+		if (rec.iscallentry)
 			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first, true).c_str());
 
 		if (rec.branch_taken != -1) {
