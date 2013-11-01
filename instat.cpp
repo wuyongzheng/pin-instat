@@ -4,12 +4,14 @@
 #include <unordered_set>
 #include <sstream>
 
-#if defined(__GNUC__)
-# define PxPTR "%lx"
-#elif defined(_MSC_VER)
+#ifdef _MSC_VER
 # define PxPTR "%Ix"
 #else
-# error "unknown compiler"
+# ifdef TARGET_IA32
+#  define PxPTR "%x"
+# else
+#  define PxPTR "%lx"
+# endif
 #endif
 
 #define MYREG_INVALID   ((REG)(REG_LAST + 1))
@@ -212,35 +214,37 @@ static void on_fini (INT32 code, void *v)
 	fprintf(logfp, "fini %d\n", code);
 	FILE *fp = fopen(tsvname, "w");
 	for(std::map<ADDRINT,insrecord>::iterator ite = insmap.begin(); ite != insmap.end(); ite ++) {
+		struct insrecord &rec = ite->second;
 		fprintf(fp, PxPTR "\t%s\t%d\t%s",
-				ite->first, ite->second.opcode.c_str(), ite->second.count,
-				ite->second.reg == MYREG_INVALID ? "-" :
-				(ite->second.reg == MYREG_JMPTARGET ? "->" : (ite->second.reg == MYREG_MEMORY ?
-					"*" : REG_StringShort(ite->second.reg).c_str())));
+				ite->first, rec.opcode.c_str(), rec.count,
+				rec.reg == MYREG_INVALID ? "-" :
+				(rec.reg == MYREG_JMPTARGET ? "->" : (rec.reg == MYREG_MEMORY ?
+					"*" : REG_StringShort(rec.reg).c_str())));
 
-		if (ite->second.count == 0 || ite->second.reg == MYREG_INVALID)
+		if (rec.count == 0 || rec.reg == MYREG_INVALID)
 			fprintf(fp, "\t-\t-");
 		else
-			fprintf(fp, "\t" PxPTR "\t" PxPTR, ite->second.low, ite->second.high);
+			fprintf(fp, "\t" PxPTR "\t" PxPTR, rec.low, rec.high);
 
 		if (calltargets.find(ite->first) != calltargets.end())
 			fprintf(fp, "\tentry: %s", get_rtn_name(ite->first, true).c_str());
 
-		if (ite->second.branch_taken != -1) {
-			fprintf(fp, "\tbrtaken: %d", ite->second.branch_taken);
+		if (rec.branch_taken != -1) {
+			fprintf(fp, "\tbrtaken: %d", rec.branch_taken);
 		}
 
-		if (ite->second.reg == MYREG_JMPTARGET &&
-				ite->second.opcode.compare(0, 5, "call ") == 0 &&
-				(ite->second.count != 0 || ite->second.high != 0)) {
-			if (ite->second.low == ite->second.high) {
-				fprintf(fp, "\ttarget: %s", get_rtn_name(ite->second.low, false).c_str());
+		if (rec.reg == MYREG_JMPTARGET &&
+				rec.opcode.compare(0, 5, "call ") == 0 &&
+				(rec.count != 0 || rec.high != 0)) {
+			if (rec.low == rec.high) {
+				fprintf(fp, "\ttarget: %s", get_rtn_name(rec.low, false).c_str());
 			} else {
 				fprintf(fp, "\ttarget: %s - %s",
-						get_rtn_name(ite->second.low, false).c_str(),
-						get_rtn_name(ite->second.high, false).c_str());
+						get_rtn_name(rec.low, false).c_str(),
+						get_rtn_name(rec.high, false).c_str());
 			}
 		}
+
 		fprintf(fp, "\n");
 	}
 	fclose(fp);
