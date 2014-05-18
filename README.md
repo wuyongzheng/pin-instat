@@ -1,13 +1,30 @@
 # pin-instat: X86 Instruction Profiler
 
-**pin-instat** is a [PIN tool](https://software.intel.com/en-us/articles/pintool/) to collect runtime information of each instructions. The information collected includes:
+**pin-instat** is a [PIN tool](https://software.intel.com/en-us/articles/pintool/)
+to collect runtime information of each instruction.
+Its main purpose is reverse engineering x86.
+The information collected includes:
 
 * **Opcode:** This is the same as any tradition disassembler.
-* **Number of time the instruction is executed:** pin-instat only shows instruction executed at least once, so its output can be is much more clean than a static disassembler.
-* **Value of source register:** pin-instat can't keep all value history. Only min and max value of the source register is kept.
-* **The number of times the branch taken** (only for condition branch instructions)
-* **Function entry points:** In pin-instat, an instruction is a function entry point iff there is a *call* to it. pin-instat can sometimes get better information comparing to a static disassembler. This is especially true for programs with lots of indirect calls, such as C++ virtual method.
-* **Branch target**: For indirect branch or call, there can be mutiple targets. It only shows the lowest and highest ones.
+* **Number of time the instruction is executed:**
+pin-instat only shows instruction executed at least once.
+Without dead code, its output can be is much more clean than a static disassembler.
+* **Value of source register:**
+pin-instat can't keep all value history.
+Only min and max value of the source register is kept.
+* **The number of times the branch taken:**
+This only applies for condition branch instructions such as `jeq`.
+If the number equals to 0 or the execution count,
+you have one less edge in the CFG to worry about.
+* **Function entry points:**
+In pin-instat, an instruction is a function entry point
+iff there is a *call* to it. pin-instat can sometimes get better
+information comparing to a static disassembler.
+This is especially true for programs with lots of indirect calls,
+such as C++ virtual method.
+* **Branch target**: For indirect branch or call,
+there can be mutiple targets.
+It only shows the lowest and highest ones.
 
 ## Example
 Let's go through an example to demostrate how to use pin-instat.
@@ -44,7 +61,9 @@ $ PINDIR/pin.sh -t TOOLDIR/instat.so -- ./hello 10
 55
 ```
 
-The program executed by PIN should behave the same as we run it directly, except that the former is a lot (5 to 20 times) slower. The profiling information is saved in `instat.tsv`. The file is a tab-separated-value file.
+The program when executed by PIN should behave the same as when we run it
+directly, except that the former is a lot (5 to 20 times) slower.
+The profiling information is saved in `instat.tsv`, a tab-separated-values file.
 
 Here is the part for `fibo()`
 
@@ -76,12 +95,14 @@ For Linux build:
 
 1. Copy `make.example` to `make.sh` and make your local changes.
 2. Run `bash make.sh`.
-3. The pin tool will be written to `obj-intel64/instat.so` for x64.
+3. The pin tool will be built as `obj-intel64/instat.so` for x64.
 4. To profile a program, say `ls`, run `PINDIR/pin.sh -t obj-intel64/instat.so -- ls`
 
 For Windows build:
 
 1. Copy `makefile.nmake.sample` to `makefile.nmake`.
+Note that this make file is very dependent on the version of MSVC.
+If you are not using Microsoft Visual C++ 2010 Express, you probably have to tweak it.
 2. Open a MSVC command prompt (from start menu) and run `nmake -f makefile.nmake`.
 3. The pin tool will be `instat.dll`.
 4. To profile a program, say `notepad.exe`, run `PINDIR\pin.bat -t TOOLDIR\instat.dll -- C:\windows\notepad.exe`. The output will be saved only after notepad exits.
