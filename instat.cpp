@@ -22,9 +22,10 @@ struct insrecord {
 	ADDRINT low;
 	ADDRINT high;
 	REG reg;
-	int count = 0;
+	int count;
 	int branch_taken; // -1 for instruction other than conditional branch
-	bool iscallentry = false;
+	bool iscallentry;
+	insrecord () : count(0), iscallentry(false) {}
 };
 
 const char *logname = "instat.log";
