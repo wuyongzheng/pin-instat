@@ -38,16 +38,16 @@ $ cat hello.c
 
 static int fibo (int n)
 {
-        if (n <= 2)
-                return 1;
-        else
-                return fibo(n - 1) + fibo(n -2);
+  if (n <= 2)
+    return 1;
+  else
+    return fibo(n - 1) + fibo(n -2);
 }
 
 int main (int argc, char *argv[])
 {
-        printf("%d\n", fibo(atoi(argv[1])));
-        return 0;
+  printf("%d\n", fibo(atoi(argv[1])));
+  return 0;
 }
 
 $ gcc -Wall -O -o hello hello.c
@@ -55,7 +55,9 @@ $ ./hello 10
 55
 ```
 
-To profile the program, let's run it through PIN.
+To profile the program, run it through pin-instat.
+For now, let's ignore the details of the PIN command line.
+
 ```
 $ PINDIR/pin.sh -t TOOLDIR/instat.so -- ./hello 10
 55
